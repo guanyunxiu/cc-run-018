@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>协作白板 v2 · CRDT 多人并发</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 加入房间 -->
+  <div id="joinScreen" class="join-screen">
+    <form id="joinForm" class="join-card" autocomplete="off">
+      <h1>协作白板 v2</h1>
+      <p class="subtitle">CRDT 并发一致 · 对象化白板 · 选择性撤销 · 原子事务 · 压感笔迹</p>
+      <label>房间号
+        <input id="roomInput" type="text" maxlength="32" placeholder="例如 collab-204" required />
+      </label>
+      <label>昵称（可选）
+        <input id="nameInput" type="text" maxlength="20" placeholder="匿名用户" />
+      </label>
+      <button type="submit">加入房间</button>
+      <p class="hint">三端同画最终一致；撤销只影响自己且不会破坏他人</p>
+    </form>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="app" class="app hidden">
+    <header class="toolbar">
+      <div class="group">
+        <span class="room-label">房间：<b id="roomLabel"></b></span>
+        <span class="user-label" id="userLabel"></span>
+      </div>
+
+      <div class="group tool-group" id="tools">
+        <button type="button" class="tool active" data-tool="select" title="选择/移动/缩放/旋转 (V)">➤</button>
+        <button type="button" class="tool" data-tool="pen" title="压感笔 (P)">✏️</button>
+        <button type="button" class="tool" data-tool="highlighter" title="荧光笔 (H)">🖍️</button>
+        <button type="button" class="tool" data-tool="dashed" title="虚线笔">╌</button>
+        <button type="button" class="tool" data-tool="texture" title="纹理/点画笔">⁘</button>
+        <button type="button" class="tool" data-tool="eraser" title="橡皮擦 (E)">🧽</button>
+        <button type="button" class="tool" data-tool="shape" title="图形">▭</button>
+        <button type="button" class="tool" data-tool="text" title="文本 (T)">T</button>
+        <button type="button" class="tool" data-tool="note" title="便签">🗒️</button>
+        <button type="button" class="tool" data-tool="image" title="图片">🖼️</button>
+        <input id="imageFile" type="file" accept="image/*" hidden />
+      </div>
+
+      <div class="group subtool-group" id="shapeTools" hidden>
+        <button type="button" class="subtool active" data-shape="rect">矩形</button>
+        <button type="button" class="subtool" data-shape="ellipse">椭圆</button>
+        <button type="button" class="subtool" data-shape="triangle">三角</button>
+        <button type="button" class="subtool" data-shape="arrow">箭头</button>
+        <button type="button" class="subtool" data-shape="line">直线</button>
+      </div>
+
+      <div class="group subtool-group" id="eraserTools" hidden>
+        <button type="button" class="subtool active" data-erase="pixel">像素擦</button>
+        <button type="button" class="subtool" data-erase="object">对象擦</button>
+        <button type="button" class="subtool" data-erase="stroke">整笔擦</button>
+      </div>
+
+      <div class="group">
+        <button type="button" class="chip active" id="recognizeBtn" title="一笔识别为图形">图形识别</button>
+        <button type="button" class="chip" id="hwrBtn" title="手写转文字（数字/符号）">手写转文字</button>
+      </div>
+
+      <div class="group colors" id="colors">
+        <button type="button" class="swatch active" data-color="#1f2937" style="background:#1f2937"></button>
+        <button type="button" class="swatch" data-color="#ef4444" style="background:#ef4444"></button>
+        <button type="button" class="swatch" data-color="#2563eb" style="background:#2563eb"></button>
+        <button type="button" class="swatch" data-color="#16a34a" style="background:#16a34a"></button>
+        <button type="button" class="swatch" data-color="#f59e0b" style="background:#f59e0b"></button>
+        <button type="button" class="swatch" data-color="#a855f7" style="background:#a855f7"></button>
+      </div>
+
+      <div class="group">
+        <label class="width-label">线宽
+          <input id="widthInput" type="range" min="2" max="24" step="1" value="4" />
+          <span id="widthValue">4</span>
+        </label>
+      </div>
+
+      <div class="group" id="objectOps" hidden>
+        <button type="button" id="groupBtn" title="组合 (Ctrl+G)">组合</button>
+        <button type="button" id="ungroupBtn" title="解组 (Ctrl+Shift+G)">解组</button>
+        <button type="button" id="layerTop">置顶</button>
+        <button type="button" id="layerUp">上移</button>
+        <button type="button" id="layerDown">下移</button>
+        <button type="button" id="layerBottom">置底</button>
+        <button type="button" id="deleteBtn" title="删除 (Delete)">删除</button>
+      </div>
+
+      <div class="group">
+        <button type="button" id="undoBtn" title="撤销自己的操作 (Ctrl+Z)">↶ 撤销</button>
+        <button type="button" id="redoBtn" title="重做 (Ctrl+Y)">↷ 重做</button>
+        <button type="button" id="historyBtn">历史</button>
+      </div>
+
+      <div class="group status-group">
+        <span id="statusDot" class="status-dot offline"></span>
+        <span id="statusText" class="status-text">离线</span>
+        <span id="modeText" class="seq-text" title="当前传输模式（v3 二进制/WebRTC P2P 或 v2 JSON 兼容模式）">json</span>
+        <span id="peerText" class="seq-text" title="已建立的 P2P DataChannel 直连数">p2p 0</span>
+        <span id="seqText" class="seq-text">seq 0</span>
+        <span id="clockText" class="seq-text">lc 0</span>
+      </div>
+    </header>
+
+    <div class="workarea">
+      <main id="boardWrap" class="board-wrap">
+        <canvas id="mainCanvas"></canvas>
+        <textarea id="textEditor" class="text-editor" hidden></textarea>
+      </main>
+      <aside id="historyPanel" class="history-panel" hidden>
+        <div class="history-head">
+          <b>我的操作（点击可选择性撤销）</b>
+          <button type="button" id="historyClose">×</button>
+        </div>
+        <ul id="historyList"></ul>
+      </aside>
+    </div>
+  </div>
+
+  <script src="kernel.js"></script>
+  <script src="transport.js"></script>
+  <script src="offline.js"></script>
+  <script src="mesh.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

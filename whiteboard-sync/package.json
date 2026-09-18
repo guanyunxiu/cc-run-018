@@ -1,0 +1,21 @@
+{
+  "name": "whiteboard-sync",
+  "version": "3.0.0",
+  "description": "协作白板 v3：LWW CRDT + 二进制 Link(分片/ACK/SACK/重传/背压) + WebRTC DataChannel P2P + lastSeq/VC 增量同步 + 周期快照加速 + IndexedDB 离线合并 + 慢客户端快照降级，协议版本化，v2 JSON 完全兼容",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-kernel.js && node test-frontend.js && node test-smoke.js && node test-v3.js",
+    "test:kernel": "node test-kernel.js",
+    "test:frontend": "node test-frontend.js",
+    "test:smoke": "node test-smoke.js",
+    "test:v3": "node test-v3.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

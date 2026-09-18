@@ -1,0 +1,9 @@
+# 镜像要求挂载点为空；产物与轨迹写在侧目录下，勿提交进初始快照
+workspace/
+traces/
+A/workspace/
+B/workspace/
+A/traces/
+B/traces/
+traces-A/
+traces-B/
